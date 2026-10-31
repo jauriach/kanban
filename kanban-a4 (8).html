@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban A4</title>
+<style>
+  :root{
+    --ink:#1d1d1f; --muted:#6e6e73; --line:#c9c9cf; --bg:#e9e9ed; --paper:#fff;
+    --c1:#ffe3e0; --c2:#fff1c9; --c3:#dcf3dd; --c4:#dbe9ff; --c5:#ece3fb; --c0:#f4f4f6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font:13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;color:var(--ink);background:var(--bg);padding:16px 0 40px}
+  .toolbar{width:297mm;max-width:96vw;margin:0 auto 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .toolbar .sp{flex:1}
+  .toolbar .hint{color:var(--muted);font-size:12px}
+  .settings{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;gap:14px}
+  .settings label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .settings input{width:58px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;color:var(--ink)}
+  #info{font-size:12px;color:var(--muted);flex-basis:100%}
+  #info.bad{color:#d70015;font-weight:600}
+  button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}
+  button:hover{background:#f5f5f7}
+  button.primary{background:#0071e3;border-color:#0071e3;color:#fff}
+  button.primary:hover{background:#0077ed}
+  button.danger{color:#d70015}
+  button:disabled{opacity:.4;cursor:default}
+  .boards{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .boards select{font:inherit;font-size:13px;color:var(--ink);padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;min-width:180px;max-width:260px}
+
+  /* La feuille A4 paysage */
+  .sheet{position:relative;width:297mm;height:210mm;margin:0 auto;background:var(--paper);padding:10mm;display:flex;flex-direction:column;box-shadow:0 4px 24px rgba(0,0,0,.18);overflow:hidden;--fs:11pt}
+  .head{display:flex;align-items:baseline;justify-content:space-between;height:10mm;margin-bottom:3mm;flex:none}
+  .head input{font:700 20px/1 -apple-system,"Helvetica Neue",sans-serif;border:0;outline:0;background:transparent;width:70%;color:var(--ink)}
+  .head input:focus{background:#f0f6ff;border-radius:4px}
+  .head .date{color:var(--muted);font-size:12px}
+  .board{flex:1;min-height:0;position:relative}
+
+  .colhead{position:absolute;display:flex;align-items:center;gap:6px;border-bottom:2px solid var(--ink);padding:0 1mm 1mm}
+  .colhead input{flex:1;min-width:0;font:600 13px/1 -apple-system,"Helvetica Neue",sans-serif;border:0;outline:0;background:transparent;text-transform:uppercase;letter-spacing:.04em;text-overflow:ellipsis}
+  .colhead input:focus{background:#f0f6ff;border-radius:4px}
+  .count{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .add{padding:1px 8px;line-height:18px;font-size:15px}
+
+  .slot{position:absolute;border:1px dashed var(--line);border-radius:5px}
+  .card{position:absolute;overflow:hidden;border:1px solid rgba(0,0,0,.12);border-radius:5px;padding:1mm 2.2mm;background:var(--c0);cursor:grab;font-size:var(--fs);line-height:1.2;font-weight:500}
+  .card .t{overflow-wrap:anywhere}
+  .card:active{cursor:grabbing}
+  .card.dragging{opacity:.4}
+  .card.warn{outline:2px solid #ff3b30;outline-offset:-2px}
+  .card[data-c="1"]{background:var(--c1)} .card[data-c="2"]{background:var(--c2)}
+  .card[data-c="3"]{background:var(--c3)} .card[data-c="4"]{background:var(--c4)} .card[data-c="5"]{background:var(--c5)}
+  .card.measure{left:0;top:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;z-index:-1}
+  .over{outline:2px solid #0071e3;outline-offset:-1px}
+  .key{font-size:10px;line-height:15px;color:#fff;background:#aeaeb2;border-radius:4px;padding:0 5px}
+  .colhead.sel{border-bottom-color:#0071e3}
+  .colhead.sel .key{background:#0071e3}
+  .card.sel{outline:3px solid #0071e3;outline-offset:1px;z-index:2}
+
+  /* segments de la ligne de séparation (un par ligne) */
+  .seg{position:absolute;cursor:col-resize;touch-action:none;z-index:5}
+  .seg::after{content:"";position:absolute;left:50%;top:2px;bottom:2px;width:3px;transform:translateX(-50%);border-radius:3px;background:transparent}
+  .seg:hover::after,.seg.drag::after{background:#0071e3}
+
+  dialog{border:0;border-radius:14px;padding:18px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  dialog::backdrop{background:rgba(0,0,0,.3)}
+  dialog h3{margin:0 0 12px;font-size:16px}
+  dialog label{font-size:12px;color:var(--muted);margin:10px 0 4px;display:flex;justify-content:space-between}
+  dialog textarea{width:100%;font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;resize:none}
+  dialog textarea:focus{outline:2px solid #0071e3;border-color:transparent}
+  #ct.bad{color:#d70015;font-weight:700}
+  .swatches{display:flex;gap:8px;margin-top:4px}
+  .swatches label{margin:0;display:block}
+  .swatches input{display:none}
+  .swatches span{display:block;width:24px;height:24px;border-radius:50%;border:2px solid transparent;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15);cursor:pointer}
+  .swatches input:checked + span{border-color:#0071e3}
+  .actions{display:flex;gap:8px;margin-top:16px}
+  .actions .sp{flex:1}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+  .toast.on{opacity:1}
+
+  @page{size:A4 landscape;margin:0}
+  @media print{
+    html,body{background:#fff;padding:0;margin:0;width:297mm;height:210mm;overflow:hidden}
+    .toolbar,.add,.toast,.seg{display:none!important}
+    .sheet{box-shadow:none;margin:0;page-break-after:avoid}
+    .slot{border-color:#e3e3e8}
+    .card.warn,.over,.card.sel{outline:0}
+    .key{display:none}
+    .colhead.sel{border-bottom-color:var(--ink)}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <label class="boards">Tableau <select id="boards" aria-label="Choisir le tableau"></select></label>
+  <button id="b-new">+ Nouveau</button>
+  <button id="b-dup">Dupliquer</button>
+  <button class="danger" id="b-del">Supprimer</button>
+  <span class="sp"></span>
+  <span class="hint" id="b-count"></span>
+</div>
+
+<div class="toolbar">
+  <button class="primary" id="print">Imprimer / PDF (A4 paysage)</button>
+  <button id="equalize">Égaliser les colonnes</button>
+  <button id="balance">Équilibrer selon le texte</button>
+  <button id="export" title="Exporte tous les tableaux dans un seul fichier">Exporter tout</button>
+  <button id="import">Importer</button>
+  <button class="danger" id="reset">Vider ce tableau</button>
+  <input type="file" id="file" accept="application/json" hidden>
+</div>
+
+<div class="toolbar settings">
+  <label>Colonnes <input type="number" id="s-cols" min="1" max="6"></label>
+  <label>Lignes par colonne <input type="number" id="s-rows" min="3" max="20"></label>
+  <label>Lettres max / carte <input type="number" id="s-chars" min="10" max="300"></label>
+  <label>Taille du texte (pt) <input type="number" id="s-fs" min="7" max="18"></label>
+  <label>Marge (mm) <input type="number" id="s-m" min="4" max="25"></label>
+  <span id="info"></span>
+  <span class="hint" style="flex-basis:100%"><b>Clavier :</b> 1 2 3… ou ← → choisir la colonne · Entrée nouvelle carte · ↑ ↓ choisir une carte · Maj + ← → changer la carte de colonne · Maj + ↑ ↓ la décaler dans la colonne · B bleu · J jaune · R rouge · V vert · M mauve · G gris : couleur de la carte choisie · Échap désélectionner. <br>Clic sur une carte : modifier · glisser une carte : la déplacer · glisser un bout de trait entre deux colonnes : le décaler à cet endroit (⇧ ou trait de l'en-tête : tout le trait · double-clic : le redresser). Une carte grandit en hauteur quand son texte ne tient plus.</span>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="head">
+    <input id="title" maxlength="40" aria-label="Titre du tableau">
+    <span class="date" id="date"></span>
+  </div>
+  <div class="board" id="board"></div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h3 id="dtitle">Nouvelle carte</h3>
+    <label>Texte <span><b id="ct">0</b>/<span id="cmax">80</span></span></label>
+    <textarea id="f-t" rows="3" required></textarea>
+    <label>Couleur</label>
+    <div class="swatches" id="sw"></div>
+    <div class="actions">
+      <button type="button" class="danger" id="del">Supprimer</button>
+      <span class="sp"></span>
+      <button type="button" id="cancel">Annuler</button>
+      <button class="primary" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY = 'kanban-a4-v4', OLD = ['kanban-a4-v3','kanban-a4-v2','kanban-a4-v1'];
+const DEF = {cols:3, rows:10, chars:80, fs:11, m:10};
+const LIM = {cols:[1,6], rows:[3,20], chars:[10,300], fs:[7,18], m:[4,25]};
+const COLORS = ['0','1','2','3','4','5'];
+const CSSC = {0:'#f4f4f6',1:'#ffe3e0',2:'#fff1c9',3:'#dcf3dd',4:'#dbe9ff',5:'#ece3fb'};
+const MINW = 0.08;              // largeur minimale d'une colonne (fraction de la page)
+const MM = 96/25.4;             // px par mm
+const $ = id => document.getElementById(id);
+const uid = () => Math.random().toString(36).slice(2,9);
+const clamp = (v,[a,b]) => { v = Math.round(+v); return isNaN(v) ? a : Math.min(b, Math.max(a, v)); };
+const toast = m => { const t=$('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2600); };
+const fresh = () => ({title:'Mon projet', set:{...DEF}, cols:['À faire','En cours','Terminé'].map(n=>({name:n,cards:[]}))});
+
+/* bx[i][r] = position (fraction de la largeur) du trait à droite de la colonne i, à la ligne r
+   (r = 0 : en-tête ; r = 1.. : lignes de cartes). C'est ce qui permet au trait de « serpenter ». */
+function fixBx(d){
+  const n = d.cols.length, len = d.set.rows+1, out = [];
+  const w = d.widths, okW = Array.isArray(w) && w.length===n && w.every(x=>x>0);
+  let cum;
+  if (okW){ const s = w.reduce((a,b)=>a+b,0); let c = 0; cum = w.map(x=>(c += x/s)); }
+  else cum = Array.from({length:n},(_,i)=>(i+1)/n);
+  for (let i=0;i<n-1;i++){
+    const a = d.bx && d.bx[i];
+    if (Array.isArray(a) && a.length && a.every(x=>x>0 && x<1))
+      out.push(Array.from({length:len},(_,r)=>a[Math.min(a.length-1, Math.floor(r*a.length/len))]));
+    else out.push(Array(len).fill(cum[i]));
+  }
+  for (let r=0;r<len;r++){
+    let ok = true, prev = 0;
+    for (let i=0;i<n-1;i++){ if (!(out[i][r] >= prev+MINW-1e-9)){ ok=false; break; } prev = out[i][r]; }
+    if (ok && n>1 && 1-prev < MINW-1e-9) ok = false;
+    if (!ok) for (let i=0;i<n-1;i++) out[i][r] = (i+1)/n;
+  }
+  d.bx = out; delete d.widths;
+}
+
+/* Nettoyage / migration d'un état (stockage, import, anciennes versions) */
+function norm(d){
+  d = d || fresh();
+  d.title = String(d.title||'').slice(0,40);
+  d.set = Object.assign({}, DEF, d.set||{});
+  let cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, LIM.cols[1]);
+  if (!cols.length) cols = fresh().cols;
+  d.cols = cols.map((c,i) => ({
+    name: String(c.name||('Colonne '+(i+1))).slice(0,18),
+    cards: (Array.isArray(c.cards)?c.cards:[]).slice(0, LIM.rows[1]).map(x => ({
+      id: x.id||uid(),
+      t: String((x.t||'') + (x.n ? ' – '+x.n : '')).slice(0,LIM.chars[1]),
+      c: COLORS.includes(String(x.c)) ? String(x.c) : '0'
+    }))
+  }));
+  for (const k in LIM) d.set[k] = clamp(d.set[k], LIM[k]);
+  d.set.cols = d.cols.length;
+  if (d.bx && d.bx.length !== d.cols.length-1) d.bx = null;
+  fixBx(d);
+  return d;
+}
+
+/* store = tous les tableaux ; S = le tableau en cours (store.boards[store.cur]) */
+let store = null;
+try { store = JSON.parse(localStorage.getItem(KEY)); } catch(e){ store = null; }
+if (store && Array.isArray(store.boards) && store.boards.length) store.boards = store.boards.map(b => norm(b));
+else {                                                    // première ouverture ou ancienne version : un seul tableau
+  let old = null;
+  try { old = JSON.parse(OLD.map(k=>localStorage.getItem(k)).find(Boolean)); } catch(e){ old = null; }
+  store = {boards:[norm(old)], cur:0};
+}
+store.cur = Math.min(Math.max(0, store.cur|0), store.boards.length-1);
+let S = store.boards[store.cur];
+const sync = () => { store.boards[store.cur] = S; };      // S peut être remplacé (annulation) : on le réenregistre
+const save = () => { sync(); try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} };
+
+$('date').textContent = new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+$('title').oninput = e => { S.title = e.target.value; save(); boardsUI(); };
+
+function boardsUI(){
+  const sl = $('boards'); sl.innerHTML = '';
+  store.boards.forEach((b,i) => {
+    const o = document.createElement('option'); o.value = i;
+    o.textContent = (i+1)+' · '+(b.title.trim() || 'Sans titre'); sl.appendChild(o);
+  });
+  sl.value = store.cur;
+  $('b-del').disabled = store.boards.length < 2;
+  countUI();
+}
+function countUI(){
+  const n = store.boards.reduce((t,b)=>t+b.cols.reduce((m,c)=>m+c.cards.length,0),0);
+  $('b-count').textContent = store.boards.length+' tableau'+(store.boards.length>1?'x':'')+' · '+n+' carte'+(n>1?'s':'')+' au total';
+}
+function loadCur(){                                       // affiche le tableau store.cur
+  S = store.boards[store.cur]; sel = {ci:0, id:null};
+  save(); syncInputs(); boardsUI(); render();
+}
+function switchTo(i){ sync(); store.cur = i; loadCur(); }
+$('boards').onchange = e => { switchTo(+e.target.value); e.target.blur(); };
+$('b-new').onclick = () => {
+  sync();
+  const nb = norm(null); nb.title = 'Tableau '+(store.boards.length+1);
+  nb.set = {...S.set, cols:3}; nb.bx = null; fixBx(nb);   // reprend les réglages du tableau en cours
+  store.boards.push(nb); store.cur = store.boards.length-1; loadCur(); $('title').select();
+};
+$('b-dup').onclick = () => {
+  sync();
+  const c = JSON.parse(JSON.stringify(S));
+  c.title = (c.title+' (copie)').slice(0,40); c.cols.forEach(col=>col.cards.forEach(x=>x.id=uid()));
+  store.boards.splice(store.cur+1,0,c); store.cur++; loadCur(); toast('Tableau dupliqué');
+};
+$('b-del').onclick = () => {
+  if (store.boards.length < 2) return;
+  if (!confirm('Supprimer le tableau « '+(S.title||'Sans titre')+' » et ses cartes ?')) return;
+  store.boards.splice(store.cur,1); store.cur = Math.min(store.cur, store.boards.length-1); loadCur();
+};
+
+/* ---------- Mise en page ---------- */
+const sheet = $('sheet');
+const meas = document.createElement('div');          // élément invisible pour mesurer la hauteur d'un texte
+meas.className = 'card measure'; meas.innerHTML = '<div class="t"></div>'; sheet.appendChild(meas);
+const textH = (t,w) => { meas.style.width = w+'px'; meas.firstChild.textContent = t; return meas.offsetHeight; };
+
+function layout(){
+  const b = $('board'), W = b.clientWidth, H = b.clientHeight, R = S.set.rows, n = S.cols.length;
+  const gapH = 3*MM, gapV = 1.2*MM, headH = 8*MM, u = (H-headH)/R;
+  const edge = (i,ri) => S.bx[i][ri]*W;
+  const L  = (ci,ri) => ci===0 ? 0 : edge(ci-1,ri)+gapH/2;
+  const Rt = (ci,ri) => ci===n-1 ? W : edge(ci,ri)-gapH/2;
+  const items = [], owner = S.cols.map(()=>Array(R+1).fill(null)), used = []; let over = 0;
+  S.cols.forEach((col,ci) => {
+    let p = 0;
+    const span = (a,k) => { let l=-Infinity, r=Infinity; for(let q=a;q<a+k;q++){ l=Math.max(l,L(ci,q+1)); r=Math.min(r,Rt(ci,q+1)); } return [l,r]; };
+    col.cards.forEach((card,idx) => {
+      if (p >= R){                      // plus de place : carte en débordement
+        const [l,r] = span(R-1,1);
+        items.push({ci,idx,card,r0:R-1,k:1,x:l,w:r-l,y:headH+(R-1)*u,h:u-gapV,over:true}); over++; return;
+      }
+      let k, fit = false, l = 0, r = 0;
+      for (k=1; k<=R-p; k++){           // plus la colonne est étroite, plus la carte prend de lignes
+        [l,r] = span(p,k);
+        if (r-l > 24 && textH(card.t, r-l) <= k*u-gapV+0.5){ fit = true; break; }
+      }
+      if (!fit){ k = R-p; [l,r] = span(p,k); over++; }
+      const it = {ci,idx,card,r0:p,k,x:l,w:r-l,y:headH+p*u,h:k*u-gapV,over:!fit};
+      for (let q=p;q<p+k;q++) owner[ci][q+1] = it;
+      items.push(it); p += k;
+    });
+    used.push(Math.min(p,R));
+  });
+  return {W,H,R,n,u,headH,gapH,gapV,L,Rt,edge,items,owner,used,over};
+}
+
+let LAY = null, dragSeg = null, sel = {ci:0, id:null};     // sel : colonne et carte sélectionnées (clavier)
+function render(){
+  sheet.style.padding = S.set.m+'mm';
+  sheet.style.setProperty('--fs', S.set.fs+'pt');
+  if (sel.ci >= S.cols.length) sel.ci = 0;
+  if (sel.id && !find(sel.id)) sel.id = null;
+  const b = $('board'); b.innerHTML = '';
+  const A = LAY = layout();
+  S.cols.forEach((col,ci) => {
+    const h = document.createElement('div'); h.className = 'colhead'+(ci===sel.ci ? ' sel' : '');
+    const l = A.L(ci,0), r = A.Rt(ci,0);
+    Object.assign(h.style,{left:l+'px',width:(r-l)+'px',top:'0px',height:A.headH+'px'});
+    h.innerHTML = `<span class="key" title="Touche ${ci+1} : sélectionner cette colonne">${ci+1}</span><input maxlength="18" aria-label="Nom de colonne"><span class="count">${A.used[ci]}/${A.R}</span><button class="add" title="Ajouter une carte">+</button>`;
+    const inp = h.querySelector('input'); inp.value = col.name;
+    inp.oninput = () => { col.name = inp.value; save(); };
+    h.querySelector('.add').onclick = () => openDlg(ci);
+    b.appendChild(h);
+    for (let q=A.used[ci]; q<A.R; q++){          // lignes libres
+      const s = document.createElement('div'); s.className = 'slot';
+      const sl = A.L(ci,q+1), sr = A.Rt(ci,q+1);
+      Object.assign(s.style,{left:sl+'px',width:(sr-sl)+'px',top:(A.headH+q*A.u)+'px',height:(A.u-A.gapV)+'px'});
+      s.ondragover = e => { e.preventDefault(); s.classList.add('over'); };
+      s.ondragleave = () => s.classList.remove('over');
+      s.ondrop = e => { e.preventDefault(); drop(e.dataTransfer.getData('text/plain'), ci, S.cols[ci].cards.length); };
+      b.appendChild(s);
+    }
+  });
+  A.items.forEach(it => {
+    const c = it.card, el = document.createElement('div');
+    el.className = 'card'+((it.over || c.t.length>S.set.chars) ? ' warn' : '')+(c.id===sel.id ? ' sel' : ''); el.dataset.c = c.c; el.draggable = true;
+    Object.assign(el.style,{left:it.x+'px',top:it.y+'px',width:it.w+'px',height:it.h+'px'});
+    const t = document.createElement('div'); t.className = 't'; t.textContent = c.t; el.appendChild(t);
+    el.onclick = () => { sel = {ci:it.ci, id:c.id}; openDlg(it.ci, c.id); };
+    el.ondragstart = e => { e.dataTransfer.setData('text/plain', c.id); e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); };
+    el.ondragend = () => el.classList.remove('dragging');
+    el.ondragover = e => { e.preventDefault(); el.classList.add('over'); };
+    el.ondragleave = () => el.classList.remove('over');
+    el.ondrop = e => { e.preventDefault(); e.stopPropagation(); drop(e.dataTransfer.getData('text/plain'), it.ci, it.idx); };
+    b.appendChild(el);
+  });
+  for (let i=0;i<A.n-1;i++) for (let ri=0; ri<=A.R; ri++){      // segments du trait de séparation
+    const sg = document.createElement('div');
+    sg.className = 'seg'+(dragSeg && dragSeg.i===i && ri>=dragSeg.a && ri<=dragSeg.b ? ' drag' : '');
+    Object.assign(sg.style,{left:(A.edge(i,ri)-A.gapH/2)+'px',width:A.gapH+'px',
+      top:(ri===0 ? 0 : A.headH+(ri-1)*A.u)+'px',height:(ri===0 ? A.headH : A.u)+'px'});
+    sg.title = 'Glisser pour décaler le trait ici · ⇧ : tout le trait · double-clic : redresser';
+    sg.onpointerdown = e => segDown(e,i,ri);
+    b.appendChild(sg);
+  }
+  info(); if (typeof countUI==='function') countUI();
+}
+
+function info(){
+  const A = LAY, fsPx = S.set.fs*96/72;
+  let minW = Infinity;
+  for (let ci=0;ci<A.n;ci++) for (let r=1;r<=A.R;r++) minW = Math.min(minW, A.Rt(ci,r)-A.L(ci,r));
+  const h = A.u-A.gapV, lines = Math.max(1,Math.floor((h-8)/(fsPx*1.2))), per = Math.max(1,Math.floor((minW-18)/(fsPx*0.52)));
+  const mm = px => Math.round(px/MM), el = $('info');
+  el.textContent = `1 ligne ≈ ${mm(h)} mm de haut (≈ ${lines} ligne${lines>1?'s':''} de texte) · endroit le plus étroit : ${mm(minW)} mm ≈ ${per} lettres par ligne de texte`
+    + (A.over ? ` — ATTENTION : ${A.over} carte${A.over>1?'s':''} déborde${A.over>1?'nt':''} (cerclée${A.over>1?'s':''} en rouge)` : '');
+  el.classList.toggle('bad', !!A.over);
+}
+
+/* Applique un changement ; l'annule s'il fait déborder une colonne */
+function commit(fn, msg){
+  const snap = JSON.stringify(S), before = layout().over;
+  fn();
+  if (layout().over > before){
+    S = JSON.parse(snap); toast(msg || 'Pas assez de place dans cette colonne');
+    syncInputs(); render(); return false;
+  }
+  save(); syncInputs(); render(); return true;
+}
+
+/* ---------- Trait de séparation qui serpente ---------- */
+let lastTap = null;
+function segDown(e,i,ri){
+  if (e.button) return;
+  e.preventDefault();
+  const now = Date.now();
+  if (lastTap && now-lastTap.t < 380 && lastTap.i===i && lastTap.ri===ri){      // double-clic : redresser
+    lastTap = null;
+    commit(()=>{ const v = S.bx[i][ri]; S.bx[i].fill(v); fixBx(S); }, 'Impossible de redresser sans faire déborder une colonne');
+    return;
+  }
+  lastTap = {t:now,i,ri};
+  const A = LAY, R = A.R, n = A.n, x0 = e.clientX, base = S.bx.map(a=>a.slice());
+  let a = ri, b = ri;
+  if (e.shiftKey || ri===0){ a = 0; b = R; }
+  else for (const ci of [i,i+1]){                    // le segment entraîne les lignes des cartes voisines
+    const it = A.owner[ci][ri]; if (it){ a = Math.min(a,it.r0+1); b = Math.max(b,it.r0+it.k); }
+  }
+  dragSeg = {i,a,b};
+  const over0 = A.over; let lastD = 0;
+  const whole = e.shiftKey || ri===0;
+  const mv = ev => {
+    const dx = (ev.clientX-x0)/A.W, prev = S.bx[i].slice(), pa = a, pb = b;
+    let lay;
+    for (let pass=0; pass<5; pass++){
+      let dlo = -1, dhi = 1;
+      for (let r=a;r<=b;r++){
+        dlo = Math.max(dlo, (i>0 ? base[i-1][r] : 0)+MINW-base[i][r]);
+        dhi = Math.min(dhi, (i<n-2 ? base[i+1][r] : 1)-MINW-base[i][r]);
+      }
+      const d = Math.min(dhi, Math.max(dlo,dx));
+      for (let r=a;r<=b;r++) S.bx[i][r] = base[i][r]+d;
+      lay = layout();
+      let na = a, nb = b;               // une carte qui grandit entraîne aussi ses nouvelles lignes
+      if (!whole) for (const ci of [i,i+1]){ const it = lay.owner[ci][ri]; if (it){ na = Math.min(na,it.r0+1); nb = Math.max(nb,it.r0+it.k); } }
+      if (na===a && nb===b) break;
+      a = na; b = nb;
+    }
+    if (lay.over > over0){ S.bx[i] = prev; a = pa; b = pb; return; }   // trop étroit : on bloque
+    dragSeg = {i,a,b}; render();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); window.removeEventListener('pointercancel',up);
+    dragSeg = null; save(); render();
+  };
+  window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up); window.addEventListener('pointercancel',up);
+  render();
+}
+
+/* ---------- Réglages ---------- */
+function syncInputs(){ S.set.cols = S.cols.length; for (const k in LIM) $('s-'+k).value = S.set[k]; $('title').value = S.title; }
+function setCols(n){
+  if (n < S.cols.length && S.cols.slice(n).some(c=>c.cards.length)){ toast('Videz d\'abord les dernières colonnes pour les supprimer'); syncInputs(); return; }
+  commit(()=>{
+    const cur = S.cols.length;
+    if (n < cur) S.cols.length = n; else for (let i=cur;i<n;i++) S.cols.push({name:'Colonne '+(i+1),cards:[]});
+    S.bx = null; fixBx(S);
+  }, 'Impossible : une colonne déborderait avec ce nombre de colonnes');
+}
+for (const k in LIM){
+  $('s-'+k).onchange = e => {
+    const v = clamp(e.target.value, LIM[k]);
+    if (k==='cols') return setCols(v);
+    if (k==='chars'){
+      S.set.chars = v; save(); syncInputs(); render();
+      const n = S.cols.flatMap(c=>c.cards).filter(c=>c.t.length>v).length;
+      if (n) toast(n+' carte(s) dépassent la nouvelle limite (cerclées en rouge)');
+      return;
+    }
+    commit(()=>{ S.set[k] = v; if (k==='rows') fixBx(S); }, 'Impossible : une colonne déborderait avec ce réglage');
+  };
+}
+$('equalize').onclick = () => commit(()=>{ S.bx = null; fixBx(S); }, 'Impossible d\'égaliser sans faire déborder une colonne');
+$('balance').onclick = () => commit(()=>{
+  const dem = S.cols.map(c=>30+c.cards.reduce((s,x)=>s+x.t.length,0)), tot = dem.reduce((a,b)=>a+b,0);
+  S.bx = null; S.widths = dem.map(x=>x/tot); fixBx(S);
+}, 'Équilibrage impossible sans faire déborder une colonne');
+
+/* ---------- Cartes ---------- */
+function find(id){
+  for (let ci=0; ci<S.cols.length; ci++){
+    const i = S.cols[ci].cards.findIndex(c=>c.id===id);
+    if (i>=0) return {ci,i,card:S.cols[ci].cards[i]};
+  }
+}
+function drop(id, ci, idx){
+  return commit(()=>{
+    const f = find(id); if (!f) return;
+    S.cols[f.ci].cards.splice(f.i,1);
+    if (f.ci===ci && idx>f.i) idx--;
+    S.cols[ci].cards.splice(Math.min(idx,S.cols[ci].cards.length),0,f.card);
+  }, 'Pas assez de place dans cette colonne pour cette carte');
+}
+
+const dlg = $('dlg'); let editing = null, targetCol = 0;
+const CNAME = {0:'Gris (G)',1:'Rouge (R)',2:'Jaune (J)',3:'Vert (V)',4:'Bleu (B)',5:'Mauve (M)'};
+$('sw').innerHTML = COLORS.map(c=>`<label title="${CNAME[c]}"><input type="radio" name="col" value="${c}"><span style="background:${CSSC[c]}"></span></label>`).join('');
+const cnt = () => { const n = $('f-t').value.length; $('ct').textContent = n; $('ct').classList.toggle('bad', n>S.set.chars); };
+$('f-t').oninput = cnt;
+$('f-t').onkeydown = e => { if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); e.stopPropagation(); $('form').requestSubmit(); } };
+function openDlg(ci, id){
+  targetCol = ci; editing = id ? find(id) : null;
+  $('dtitle').textContent = editing ? 'Modifier la carte' : 'Nouvelle carte';
+  $('f-t').maxLength = S.set.chars; $('cmax').textContent = S.set.chars;
+  $('f-t').value = editing ? editing.card.t : '';
+  document.querySelector(`#sw input[value="${editing ? editing.card.c : '0'}"]`).checked = true;
+  $('del').style.display = editing ? '' : 'none';
+  cnt(); dlg.showModal(); $('f-t').focus();
+}
+$('cancel').onclick = () => dlg.close();
+$('del').onclick = () => { if (editing) commit(()=>{ find(editing.card.id) && S.cols[editing.ci].cards.splice(find(editing.card.id).i,1); }); dlg.close(); };
+$('form').onsubmit = () => {
+  const t = $('f-t').value.replace(/\s+/g,' ').trim(); if (!t) return;
+  const c = document.querySelector('#sw input:checked').value, ed = editing, tc = targetCol, nid = uid();
+  const ok = commit(()=>{ if (ed) Object.assign(find(ed.card.id).card,{t,c}); else S.cols[tc].cards.push({id:nid,t,c}); },
+         'Pas assez de place : ce texte est trop long pour l\'espace restant (élargissez la colonne ou raccourcissez)');
+  if (ok){ sel = {ci:tc, id: ed ? ed.card.id : nid}; render(); }
+};
+
+/* ---------- Raccourcis clavier ---------- */
+const COLKEYS = {g:'0', r:'1', j:'2', v:'3', b:'4', m:'5'};   // gris, rouge, jaune, vert, bleu, mauve
+document.addEventListener('keydown', e => {
+  if (dlg.open || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.closest('dialog')) return;     // saisie dans un champ de la page
+  if (e.target.tagName==='BUTTON' && (e.key==='Enter' || e.key===' ')) return;
+  const cards = S.cols[sel.ci].cards, k = e.key;
+  if (/^[1-6]$/.test(k)){                                   // 1…6 : choisir la colonne
+    if (+k <= S.cols.length){ sel = {ci:+k-1, id:null}; render(); }
+  } else if (k === 'Enter'){                                // Entrée : nouvelle carte dans la colonne choisie
+    e.preventDefault(); openDlg(sel.ci);
+  } else if ((k === 'ArrowDown' || k === 'ArrowUp') && e.shiftKey){     // Maj + ↑ ↓ : décaler la carte dans la colonne
+    e.preventDefault();
+    const f = sel.id && find(sel.id);
+    if (!f){ toast('Choisissez d\'abord une carte avec ↑ ↓'); return; }
+    const down = k === 'ArrowDown';
+    if (down ? f.i >= S.cols[f.ci].cards.length-1 : f.i <= 0) return;
+    drop(sel.id, f.ci, down ? f.i+2 : f.i-1);
+  } else if (k === 'ArrowDown' || k === 'ArrowUp'){         // ↑ ↓ : choisir une carte de la colonne
+    e.preventDefault(); if (!cards.length) return;
+    const i = cards.findIndex(c=>c.id===sel.id);
+    const ni = i<0 ? (k==='ArrowDown' ? 0 : cards.length-1) : Math.min(cards.length-1, Math.max(0, i+(k==='ArrowDown'?1:-1)));
+    sel.id = cards[ni].id; render();
+  } else if ((k === 'ArrowRight' || k === 'ArrowLeft') && e.shiftKey){   // Maj + ← → : déplacer la carte
+    e.preventDefault();
+    const f = sel.id && find(sel.id);
+    if (!f){ toast('Choisissez d\'abord une carte avec ↑ ↓'); return; }
+    const t = f.ci + (k==='ArrowRight' ? 1 : -1);
+    if (t < 0 || t >= S.cols.length) return;
+    if (drop(sel.id, t, f.i)){ sel.ci = t; render(); }
+  } else if (k === 'ArrowRight' || k === 'ArrowLeft'){      // ← → : changer de colonne
+    e.preventDefault();
+    const t = sel.ci + (k==='ArrowRight' ? 1 : -1);
+    if (t < 0 || t >= S.cols.length) return;
+    const i = Math.max(0, cards.findIndex(c=>c.id===sel.id)), tc = S.cols[t].cards;
+    sel = {ci:t, id: tc.length ? tc[Math.min(i,tc.length-1)].id : null}; render();
+  } else if (COLKEYS[k.toLowerCase()] !== undefined){          // b j r v m g : couleur de la carte choisie
+    const f = sel.id && find(sel.id);
+    if (!f){ toast('Choisissez d\'abord une carte avec ↑ ↓'); return; }
+    f.card.c = COLKEYS[k.toLowerCase()]; save(); render();
+  } else if (k === 'Escape'){ sel.id = null; render(); }
+});
+
+/* ---------- Barre d'outils ---------- */
+$('print').onclick = () => window.print();
+$('export').onclick = () => {                              // exporte TOUS les tableaux
+  sync();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({kanban:'a4', version:4, cur:store.cur, boards:store.boards},null,2)],{type:'application/json'}));
+  a.download = 'kanbans.json'; a.click();
+  toast(store.boards.length+' tableau'+(store.boards.length>1?'x':'')+' exporté'+(store.boards.length>1?'s':''));
+};
+$('import').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try{
+    const d = JSON.parse(r.result);
+    const inc = Array.isArray(d.boards) ? d.boards : Array.isArray(d.cols) ? [d] : null;   // fichier complet ou ancien fichier d'un seul tableau
+    if (!inc || !inc.length) throw 0;
+    const nbs = inc.slice(0,50).map(b => norm(b));
+    sync();
+    if (nbs.length > 1 && confirm('Le fichier contient '+nbs.length+' tableaux.\n\nOK = remplacer tous vos tableaux actuels\nAnnuler = les ajouter à la suite')){
+      store.boards = nbs; store.cur = Math.min(Math.max(0, d.cur|0), nbs.length-1);
+    } else { store.cur = store.boards.length; store.boards.push(...nbs); }
+    loadCur(); toast(nbs.length+' tableau'+(nbs.length>1?'x':'')+' importé'+(nbs.length>1?'s':''));
+  }catch(err){ toast('Fichier invalide'); } };
+  r.readAsText(f); e.target.value = '';
+};
+$('reset').onclick = () => { if (confirm('Vider toutes les cartes de ce tableau ?')){ S.cols.forEach(c=>c.cards=[]); save(); render(); } };
+
+syncInputs(); boardsUI(); render();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+</script>
+</body>
+</html>
