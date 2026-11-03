@@ -105,6 +105,8 @@
 </div>
 
 <div class="toolbar">
+  <button id="undo" title="Annuler (⌘Z / Ctrl+Z)">↶ Annuler</button>
+  <button id="redo" title="Rétablir (⇧⌘Z / Ctrl+Y)">↷ Rétablir</button>
   <button class="primary" id="print">Imprimer / PDF (A4 paysage)</button>
   <button id="equalize">Égaliser les colonnes</button>
   <button id="balance">Équilibrer selon le texte</button>
@@ -121,7 +123,7 @@
   <label>Taille du texte (pt) <input type="number" id="s-fs" min="7" max="18"></label>
   <label>Marge (mm) <input type="number" id="s-m" min="4" max="25"></label>
   <span id="info"></span>
-  <span class="hint" style="flex-basis:100%"><b>Clavier :</b> 1 2 3… ou ← → choisir la colonne · Entrée nouvelle carte · ↑ ↓ choisir une carte · Maj + ← → changer la carte de colonne · Maj + ↑ ↓ la décaler dans la colonne · B bleu · J jaune · R rouge · V vert · M mauve · G gris : couleur de la carte choisie · Échap désélectionner. <br>Clic sur une carte : modifier · glisser une carte : la déplacer · glisser un bout de trait entre deux colonnes : le décaler à cet endroit (⇧ ou trait de l'en-tête : tout le trait · double-clic : le redresser). Une carte grandit en hauteur quand son texte ne tient plus.</span>
+  <span class="hint" style="flex-basis:100%"><b>Clavier :</b> 1 2 3… ou ← → choisir la colonne · Entrée nouvelle carte · ↑ ↓ choisir une carte · Maj + ← → changer la carte de colonne · Maj + ↑ ↓ la décaler dans la colonne · B bleu · J jaune · R rouge · V vert · M mauve · G gris : couleur de la carte choisie · Suppr ou ⌫ supprimer la carte choisie · Échap désélectionner · <b>⌘Z / Ctrl+Z annuler</b> · ⇧⌘Z / Ctrl+Y rétablir. <br>Clic sur une carte : modifier · glisser une carte : la déplacer · glisser un bout de trait entre deux colonnes : le décaler à cet endroit (⇧ ou trait de l'en-tête : tout le trait · double-clic : le redresser). Une carte grandit en hauteur quand son texte ne tient plus.</span>
 </div>
 
 <div class="sheet" id="sheet">
@@ -220,10 +222,38 @@ else {                                                    // première ouverture
 store.cur = Math.min(Math.max(0, store.cur|0), store.boards.length-1);
 let S = store.boards[store.cur];
 const sync = () => { store.boards[store.cur] = S; };      // S peut être remplacé (annulation) : on le réenregistre
-const save = () => { sync(); try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} };
+/* Historique : chaque changement de l'état complet (tous les tableaux) est annulable. Une frappe continue
+   dans un champ (titre, nom de colonne) est regroupée en une seule étape. */
+let hist = [], fut = [], lastSnap = JSON.stringify(store), lastKey = null, lastT = 0;
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const persist = str => { try{ localStorage.setItem(KEY, str); }catch(e){} };
+function save(key){
+  sync();
+  const cur = JSON.stringify(store);
+  if (cur !== lastSnap){
+    const now = Date.now();
+    if (!(key && key === lastKey && now - lastT < 1500)){ hist.push(lastSnap); if (hist.length > 300) hist.shift(); }
+    fut = []; lastSnap = cur; lastKey = key || null; lastT = now;
+  }
+  persist(cur); histUI();
+}
+function histUI(){
+  const u = document.getElementById('undo'), r = document.getElementById('redo');
+  if (u) u.disabled = !hist.length;
+  if (r) r.disabled = !fut.length;
+}
+function restore(str){
+  const prevCur = store.cur;
+  store = JSON.parse(str); S = store.boards[store.cur];
+  if (store.cur !== prevCur) sel = {ci:0, id:null};
+  lastSnap = str; lastKey = null; persist(str);
+  syncInputs(); boardsUI(); render(); histUI();
+}
+function undo(){ if (!hist.length){ toast('Rien à annuler'); return; } sync(); fut.push(lastSnap); restore(hist.pop()); toast('Annulé'); }
+function redo(){ if (!fut.length){ toast('Rien à rétablir'); return; } hist.push(lastSnap); restore(fut.pop()); toast('Rétabli'); }
 
 $('date').textContent = new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
-$('title').oninput = e => { S.title = e.target.value; save(); boardsUI(); };
+$('title').oninput = e => { S.title = e.target.value; save('title'+store.cur); boardsUI(); };
 
 function boardsUI(){
   const sl = $('boards'); sl.innerHTML = '';
@@ -313,7 +343,7 @@ function render(){
     Object.assign(h.style,{left:l+'px',width:(r-l)+'px',top:'0px',height:A.headH+'px'});
     h.innerHTML = `<span class="key" title="Touche ${ci+1} : sélectionner cette colonne">${ci+1}</span><input maxlength="18" aria-label="Nom de colonne"><span class="count">${A.used[ci]}/${A.R}</span><button class="add" title="Ajouter une carte">+</button>`;
     const inp = h.querySelector('input'); inp.value = col.name;
-    inp.oninput = () => { col.name = inp.value; save(); };
+    inp.oninput = () => { col.name = inp.value; save('colname'+store.cur+'-'+ci); };
     h.querySelector('.add').onclick = () => openDlg(ci);
     b.appendChild(h);
     for (let q=A.used[ci]; q<A.R; q++){          // lignes libres
@@ -495,6 +525,13 @@ $('form').onsubmit = () => {
 /* ---------- Raccourcis clavier ---------- */
 const COLKEYS = {g:'0', r:'1', j:'2', v:'3', b:'4', m:'5'};   // gris, rouge, jaune, vert, bleu, mauve
 document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')){
+    const field = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);       // dans un champ de texte : annulation de texte du navigateur
+    if (dlg.open || field) return;
+    e.preventDefault();
+    if (e.key.toLowerCase() === 'y' || e.shiftKey) redo(); else undo();
+    return;
+  }
   if (dlg.open || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.closest('dialog')) return;     // saisie dans un champ de la page
   if (e.target.tagName==='BUTTON' && (e.key==='Enter' || e.key===' ')) return;
@@ -532,11 +569,21 @@ document.addEventListener('keydown', e => {
     const f = sel.id && find(sel.id);
     if (!f){ toast('Choisissez d\'abord une carte avec ↑ ↓'); return; }
     f.card.c = COLKEYS[k.toLowerCase()]; save(); render();
+  } else if (k === 'Delete' || k === 'Backspace'){            // Suppr / ⌫ : supprimer la carte choisie
+    e.preventDefault();
+    const f = sel.id && find(sel.id);
+    if (!f){ toast('Choisissez d\'abord une carte avec ↑ ↓'); return; }
+    const col = S.cols[f.ci].cards, next = col[f.i+1] || col[f.i-1] || null;
+    commit(()=>{ const g = find(sel.id); if (g) S.cols[g.ci].cards.splice(g.i,1); });
+    sel = {ci:f.ci, id: next ? next.id : null}; render();
+    toast('Carte supprimée — '+(MAC ? '⌘Z' : 'Ctrl+Z')+' pour annuler');
   } else if (k === 'Escape'){ sel.id = null; render(); }
 });
 
 /* ---------- Barre d'outils ---------- */
 $('print').onclick = () => window.print();
+$('undo').onclick = undo;
+$('redo').onclick = redo;
 $('export').onclick = () => {                              // exporte TOUS les tableaux
   sync();
   const a = document.createElement('a');
@@ -563,7 +610,7 @@ $('file').onchange = e => {
 };
 $('reset').onclick = () => { if (confirm('Vider toutes les cartes de ce tableau ?')){ S.cols.forEach(c=>c.cards=[]); save(); render(); } };
 
-syncInputs(); boardsUI(); render();
+syncInputs(); boardsUI(); render(); histUI();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
 </script>
 </body>
